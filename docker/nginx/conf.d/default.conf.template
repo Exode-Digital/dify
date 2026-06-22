@@ -4,22 +4,17 @@ server {
     listen ${NGINX_PORT};
     server_name ${NGINX_SERVER_NAME};
 
-    # DNS Docker dynamique
-    resolver 127.0.0.11 valid=10s ipv6=off;
-    resolver_timeout 5s;
-
-    # L'utilisation de variables force Nginx à refaire la résolution DNS.
-    set $api_upstream api:5001;
-    set $web_upstream web:3000;
-    set $plugin_daemon_upstream plugin_daemon:5002;
-
     location /console/api {
-      proxy_pass http://$api_upstream;
+      resolver 127.0.0.11 valid=30s ipv6=off;
+      set $dify_api_upstream api:5001;
+      proxy_pass http://$dify_api_upstream;
       include proxy.conf;
     }
 
     location /api {
-      proxy_pass http://$api_upstream;
+      resolver 127.0.0.11 valid=30s ipv6=off;
+      set $dify_api_upstream api:5001;
+      proxy_pass http://$dify_api_upstream;
       include proxy.conf;
     }
 
@@ -34,46 +29,55 @@ server {
     }
 
     location /v1 {
-      proxy_pass http://$api_upstream;
-      include proxy.conf;
-    }
-
-    location /openapi {
-      proxy_pass http://$api_upstream;;
+      resolver 127.0.0.11 valid=30s ipv6=off;
+      set $dify_api_upstream api:5001;
+      proxy_pass http://$dify_api_upstream;
       include proxy.conf;
     }
 
     location /files {
-      proxy_pass http://$api_upstream;
+      resolver 127.0.0.11 valid=30s ipv6=off;
+      set $dify_api_upstream api:5001;
+      proxy_pass http://$dify_api_upstream;
       include proxy.conf;
     }
 
     location /explore {
-      proxy_pass http://$web_upstream;
+      resolver 127.0.0.11 valid=30s ipv6=off;
+      set $dify_web_upstream web:3000;
+      proxy_pass http://$dify_web_upstream;
       include proxy.conf;
     }
 
     location /e/ {
-      proxy_pass http://$plugin_daemon_upstream;
+      resolver 127.0.0.11 valid=30s ipv6=off;
+      set $dify_plugin_upstream plugin_daemon:5002;
+      proxy_pass http://$dify_plugin_upstream;
       proxy_set_header Dify-Hook-Url $scheme://$host$request_uri;
       include proxy.conf;
     }
 
     location / {
-      proxy_pass http://$web_upstream;
+      resolver 127.0.0.11 valid=30s ipv6=off;
+      set $dify_web_upstream web:3000;
+      proxy_pass http://$dify_web_upstream;
       include proxy.conf;
     }
 
     location /mcp {
-      proxy_pass http://$api_upstream;
+      resolver 127.0.0.11 valid=30s ipv6=off;
+      set $dify_api_upstream api:5001;
+      proxy_pass http://$dify_api_upstream;
       include proxy.conf;
     }
 
     location /triggers {
-      proxy_pass http://$api_upstream;
+      resolver 127.0.0.11 valid=30s ipv6=off;
+      set $dify_api_upstream api:5001;
+      proxy_pass http://$dify_api_upstream;
       include proxy.conf;
     }
-    
+
     # placeholder for acme challenge location
     ${ACME_CHALLENGE_LOCATION}
 
