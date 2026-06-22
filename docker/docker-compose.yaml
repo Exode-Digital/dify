@@ -264,8 +264,10 @@ services:
       retries: 3
       start_period: 30s
     networks:
-      - ssrf_proxy_network
-      - default
+      ssrf_proxy_network:
+      default:
+        aliases:
+          - dify-api-internal
 
   # WebSocket service for workflow collaboration.
   api_websocket:
@@ -382,7 +384,7 @@ services:
       - ./.env
     environment:
       CONSOLE_API_URL: ${CONSOLE_API_URL:-}
-      SERVER_CONSOLE_API_URL: ${SERVER_CONSOLE_API_URL:-http://api:5001}
+      SERVER_CONSOLE_API_URL: ${SERVER_CONSOLE_API_URL:-http://dify-api-internal:5001}
       APP_API_URL: ${APP_API_URL:-}
       AMPLITUDE_API_KEY: ${AMPLITUDE_API_KEY:-}
       NEXT_PUBLIC_COOKIE_DOMAIN: ${NEXT_PUBLIC_COOKIE_DOMAIN:-}
@@ -406,6 +408,10 @@ services:
       ENABLE_WEBSITE_JINAREADER: ${ENABLE_WEBSITE_JINAREADER:-true}
       ENABLE_WEBSITE_FIRECRAWL: ${ENABLE_WEBSITE_FIRECRAWL:-true}
       ENABLE_WEBSITE_WATERCRAWL: ${ENABLE_WEBSITE_WATERCRAWL:-true}
+    networks:
+      default:
+        aliases:
+          - dify-web-internal
 
   # The PostgreSQL database.
   db_postgres:
@@ -541,8 +547,10 @@ services:
         required: false
       - ./.env
     networks:
-      - ssrf_proxy_network
-      - default
+      ssrf_proxy_network:
+      default:
+        aliases:
+          - dify-plugin-internal
     environment:
       DB_DATABASE: ${DB_PLUGIN_DATABASE:-dify_plugin}
       DB_SSL_MODE: ${DB_SSL_MODE:-disable}
@@ -655,7 +663,10 @@ services:
     command: ["tail", "-f", "/dev/null"]
 
   # The nginx reverse proxy.
-  # used for reverse proxying the API service and Web service.
+  # Self-contained Dokploy variant:
+  # - waits for the API healthcheck before starting;
+  # - uses Docker DNS dynamically;
+  # - uses unique internal aliases to avoid collisions with another service named "api".
   nginx:
     image: nginx:latest
     restart: always
@@ -663,12 +674,15 @@ services:
       - ./nginx/nginx.conf.template:/etc/nginx/nginx.conf.template
       - ./nginx/proxy.conf.template:/etc/nginx/proxy.conf.template
       - ./nginx/https.conf.template:/etc/nginx/https.conf.template
-      - ./nginx/conf.d:/etc/nginx/conf.d
       - ./nginx/docker-entrypoint.sh:/docker-entrypoint-mount.sh
       - ./nginx/ssl:/etc/ssl # cert dir (legacy)
       - ./volumes/certbot/conf/live:/etc/letsencrypt/live # cert dir (with certbot container)
       - ./volumes/certbot/conf:/etc/letsencrypt
       - ./volumes/certbot/www:/var/www/html
+    configs:
+      - source: dify_nginx_default
+        target: /etc/nginx/conf.d/default.conf.template
+        mode: 0444
     entrypoint:
       [
         "sh",
@@ -680,8 +694,6 @@ services:
       NGINX_HTTPS_ENABLED: ${NGINX_HTTPS_ENABLED:-false}
       NGINX_SSL_PORT: ${NGINX_SSL_PORT:-443}
       NGINX_PORT: ${NGINX_PORT:-80}
-      # You're required to add your own SSL certificates/keys to the `./nginx/ssl` directory
-      # and modify the env vars below in .env if HTTPS_ENABLED is true.
       NGINX_SSL_CERT_FILENAME: ${NGINX_SSL_CERT_FILENAME:-dify.crt}
       NGINX_SSL_CERT_KEY_FILENAME: ${NGINX_SSL_CERT_KEY_FILENAME:-dify.key}
       NGINX_SSL_PROTOCOLS: ${NGINX_SSL_PROTOCOLS:-TLSv1.2 TLSv1.3}
@@ -693,9 +705,18 @@ services:
       NGINX_ENABLE_CERTBOT_CHALLENGE: ${NGINX_ENABLE_CERTBOT_CHALLENGE:-false}
       NGINX_SOCKET_IO_UPSTREAM: ${NGINX_SOCKET_IO_UPSTREAM:-api_websocket:5001}
       CERTBOT_DOMAIN: ${CERTBOT_DOMAIN:-}
+      DIFY_API_UPSTREAM: dify-api-internal:5001
+      DIFY_WEB_UPSTREAM: dify-web-internal:3000
+      DIFY_PLUGIN_UPSTREAM: dify-plugin-internal:5002
     depends_on:
-      - api
-      - web
+      api:
+        condition: service_healthy
+      web:
+        condition: service_started
+      plugin_daemon:
+        condition: service_started
+    networks:
+      - default
     ports:
       - "${EXPOSE_NGINX_PORT:-80}:${NGINX_PORT:-80}"
       - "${EXPOSE_NGINX_SSL_PORT:-443}:${NGINX_SSL_PORT:-443}"
@@ -1183,6 +1204,86 @@ services:
     restart: always
     volumes:
       - ./volumes/unstructured:/app/data
+
+
+configs:
+  dify_nginx_default:
+    content: |
+      # Dify reverse proxy configuration embedded in Docker Compose.
+      server {
+          listen $${NGINX_PORT};
+          server_name $${NGINX_SERVER_NAME};
+
+          resolver 127.0.0.11 valid=10s ipv6=off;
+          resolver_timeout 5s;
+
+          location /console/api {
+              set $$dify_api_upstream $${DIFY_API_UPSTREAM};
+              proxy_pass http://$$dify_api_upstream;
+              include proxy.conf;
+          }
+
+          location /api {
+              set $$dify_api_upstream $${DIFY_API_UPSTREAM};
+              proxy_pass http://$$dify_api_upstream;
+              include proxy.conf;
+          }
+
+          location /socket.io/ {
+              set $$socket_io_upstream $${NGINX_SOCKET_IO_UPSTREAM};
+              proxy_pass http://$$socket_io_upstream;
+              include proxy.conf;
+              proxy_set_header Upgrade $$http_upgrade;
+              proxy_set_header Connection "upgrade";
+              proxy_cache_bypass $$http_upgrade;
+          }
+
+          location /v1 {
+              set $$dify_api_upstream $${DIFY_API_UPSTREAM};
+              proxy_pass http://$$dify_api_upstream;
+              include proxy.conf;
+          }
+
+          location /files {
+              set $$dify_api_upstream $${DIFY_API_UPSTREAM};
+              proxy_pass http://$$dify_api_upstream;
+              include proxy.conf;
+          }
+
+          location /explore {
+              set $$dify_web_upstream $${DIFY_WEB_UPSTREAM};
+              proxy_pass http://$$dify_web_upstream;
+              include proxy.conf;
+          }
+
+          location /e/ {
+              set $$dify_plugin_upstream $${DIFY_PLUGIN_UPSTREAM};
+              proxy_pass http://$$dify_plugin_upstream;
+              proxy_set_header Dify-Hook-Url $$scheme://$$host$$request_uri;
+              include proxy.conf;
+          }
+
+          location / {
+              set $$dify_web_upstream $${DIFY_WEB_UPSTREAM};
+              proxy_pass http://$$dify_web_upstream;
+              include proxy.conf;
+          }
+
+          location /mcp {
+              set $$dify_api_upstream $${DIFY_API_UPSTREAM};
+              proxy_pass http://$$dify_api_upstream;
+              include proxy.conf;
+          }
+
+          location /triggers {
+              set $$dify_api_upstream $${DIFY_API_UPSTREAM};
+              proxy_pass http://$$dify_api_upstream;
+              include proxy.conf;
+          }
+
+          $${ACME_CHALLENGE_LOCATION}
+          $${HTTPS_CONFIG}
+      }
 
 networks:
   # create a network between sandbox, api and ssrf_proxy, and can not access outside.
