@@ -4,6 +4,15 @@ server {
     listen ${NGINX_PORT};
     server_name ${NGINX_SERVER_NAME};
 
+    # DNS Docker dynamique
+    resolver 127.0.0.11 valid=10s ipv6=off;
+    resolver_timeout 5s;
+
+    # L'utilisation de variables force Nginx à refaire la résolution DNS.
+    set $api_upstream api:5001;
+    set $web_upstream web:3000;
+    set $plugin_daemon_upstream plugin_daemon:5002;
+
     location /console/api {
       proxy_pass http://api:5001;
       include proxy.conf;
