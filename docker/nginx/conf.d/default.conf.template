@@ -65,12 +65,12 @@ server {
     }
 
     location /mcp {
-      proxy_pass http://api:5001;
+      proxy_pass http://$api_upstream;
       include proxy.conf;
     }
 
     location /triggers {
-      proxy_pass http://api:5001;
+      proxy_pass http://$api_upstream;
       include proxy.conf;
     }
     
