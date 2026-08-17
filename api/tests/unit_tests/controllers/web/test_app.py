@@ -76,9 +76,8 @@ class TestAppParameterApi:
         app_definitions.get_public_parameters.side_effect = service_error
         application_services.return_value = SimpleNamespace(app_definitions=app_definitions)
 
-        with app.test_request_context("/parameters"):
-            with pytest.raises(http_error):
-                AppParameterApi().get(_make_app(), _make_end_user())
+        with app.test_request_context("/parameters"), pytest.raises(http_error):
+            AppParameterApi().get(_make_app(), _make_end_user())
 
 
 # ---------------------------------------------------------------------------
@@ -104,9 +103,8 @@ class TestAppMeta:
         app_definitions.get_tool_icons.side_effect = AppDefinitionUnavailableError
         application_services.return_value = SimpleNamespace(app_definitions=app_definitions)
 
-        with app.test_request_context("/meta"):
-            with pytest.raises(AppUnavailableError) as raised:
-                AppMeta().get(_make_app(), _make_end_user())
+        with app.test_request_context("/meta"), pytest.raises(AppUnavailableError) as raised:
+            AppMeta().get(_make_app(), _make_end_user())
 
         assert raised.value.data == {
             "code": "app_unavailable",
