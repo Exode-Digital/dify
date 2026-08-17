@@ -162,9 +162,8 @@ class TestAppAccessMode:
     def test_raises_when_no_app_id_or_code(self, mock_features: MagicMock, app: Flask) -> None:
         mock_features.return_value = SimpleNamespace(webapp_auth=SimpleNamespace(enabled=True))
 
-        with app.test_request_context("/webapp/access-mode"):
-            with pytest.raises(ValueError, match="appId or appCode"):
-                AppAccessMode().get()
+        with app.test_request_context("/webapp/access-mode"), pytest.raises(ValueError, match="appId or appCode"):
+            AppAccessMode().get()
 
 
 # ---------------------------------------------------------------------------
@@ -179,6 +178,8 @@ class TestAppWebAuthPermission:
         assert result == {"result": True}
 
     def test_raises_when_missing_app_id(self, app: Flask) -> None:
-        with app.test_request_context("/webapp/permission", headers={"X-App-Code": "code1"}):
-            with pytest.raises(ValueError, match="appId"):
-                AppWebAuthPermission().get()
+        with (
+            app.test_request_context("/webapp/permission", headers={"X-App-Code": "code1"}),
+            pytest.raises(ValueError, match="appId"),
+        ):
+            AppWebAuthPermission().get()
