@@ -1,21 +1,30 @@
-# Please do not directly edit this file. Instead, modify the .env variables related to NGINX configuration.
+# Patched for Dokploy: internal aliases to avoid dokploy-network name collision.
 
 server {
     listen ${NGINX_PORT};
     server_name ${NGINX_SERVER_NAME};
 
-    location /console/api {
-      proxy_pass http://api:5001;
-      include proxy.conf;
-    }
+    resolver 127.0.0.11 valid=10s ipv6=off;
+    set $dify_api    dify-api-internal:5001;
+    set $dify_web    dify-web-internal:3000;
+    set $dify_plugin dify-plugin-internal:5002;
 
-    location /api {
-      proxy_pass http://api:5001;
+    location /console/api { proxy_pass http://$dify_api; include proxy.conf; }
+    location /api         { proxy_pass http://$dify_api; include proxy.conf; }
+    location /v1          { proxy_pass http://$dify_api; include proxy.conf; }
+    location /openapi     { proxy_pass http://$dify_api; include proxy.conf; }
+    location /files       { proxy_pass http://$dify_api; include proxy.conf; }
+    location /mcp         { proxy_pass http://$dify_api; include proxy.conf; }
+    location /triggers    { proxy_pass http://$dify_api; include proxy.conf; }
+    location /explore     { proxy_pass http://$dify_web; include proxy.conf; }
+
+    location /e/ {
+      proxy_pass http://$dify_plugin;
+      proxy_set_header Dify-Hook-Url $scheme://$host$request_uri;
       include proxy.conf;
     }
 
     location /socket.io/ {
-      resolver 127.0.0.11 valid=30s ipv6=off;
       set $socket_io_upstream ${NGINX_SOCKET_IO_UPSTREAM};
       proxy_pass http://$socket_io_upstream;
       include proxy.conf;
@@ -24,47 +33,8 @@ server {
       proxy_cache_bypass $http_upgrade;
     }
 
-    location /v1 {
-      proxy_pass http://api:5001;
-      include proxy.conf;
-    }
+    location / { proxy_pass http://$dify_web; include proxy.conf; }
 
-    location /openapi {
-      proxy_pass http://api:5001;
-      include proxy.conf;
-    }
-
-    location /files {
-      proxy_pass http://api:5001;
-      include proxy.conf;
-    }
-
-    location /explore {
-      proxy_pass http://web:3000;
-      include proxy.conf;
-    }
-
-    location /e/ {
-      proxy_pass http://plugin_daemon:5002;
-      proxy_set_header Dify-Hook-Url $scheme://$host$request_uri;
-      include proxy.conf;
-    }
-
-    location / {
-      proxy_pass http://web:3000;
-      include proxy.conf;
-    }
-
-    location /mcp {
-      proxy_pass http://api:5001;
-      include proxy.conf;
-    }
-
-    location /triggers {
-      proxy_pass http://api:5001;
-      include proxy.conf;
-    }
-    
     # placeholder for acme challenge location
     ${ACME_CHALLENGE_LOCATION}
 
