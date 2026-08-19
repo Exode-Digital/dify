@@ -36,10 +36,12 @@ from services.explore_banner_query_service import ExploreBannerQueryService
 from services.feature_query_service import FeatureQueryService
 from services.feature_service import FeatureService
 from services.feature_service_gateway import FeatureServiceGateway
+from services.file_service import FileService
 from services.init_validation_service import InitValidationService
 from services.schema_definition_service import SchemaDefinitionService
 from services.setup_adapters import RedisSetupLock, RegisterServiceAccountProvisioner
 from services.setup_service import SetupService
+from services.web_app_runtime_query_service import WebAppRuntimeQueryService
 from services.workspace_member_query_service import WorkspaceMemberQueryService
 from services.workspace_member_role_resolver import DeploymentWorkspaceMemberRoleResolver
 from services.workspace_plan_gateway import DeploymentWorkspacePlanGateway
@@ -53,6 +55,7 @@ class ApplicationServices:
     account_activation: AccountActivationService
     app_definitions: AppDefinitionQueryService
     data_source_api_key_auth: DataSourceApiKeyAuthService
+    web_app_runtime: WebAppRuntimeQueryService
     explore_banner_queries: ExploreBannerQueryService
     schema_definitions: SchemaDefinitionService
     setup: SetupService
@@ -71,6 +74,7 @@ def build_application_services(
 ) -> ApplicationServices:
     installation_state = InstallationStateRepository(client=database_client)
     data_source_api_key_auth_bindings = SQLAlchemyDataSourceApiKeyAuthBindingRepository(session_factory=database_client)
+    app_definition_repository = AppDefinitionQueryRepository(session_factory=database_client)
     return ApplicationServices(
         account_activation=AccountActivationService(
             tokens=RegisterServiceInvitationTokenStore(),
@@ -84,7 +88,7 @@ def build_application_services(
             ),
         ),
         app_definitions=AppDefinitionQueryService(
-            definitions=AppDefinitionQueryRepository(session_factory=database_client),
+            definitions=app_definition_repository,
             builtin_icon_url_prefix=(
                 dify_config.CONSOLE_API_URL + "/console/api/workspaces/current/tool-provider/builtin/"
             ),
@@ -93,6 +97,10 @@ def build_application_services(
             bindings=data_source_api_key_auth_bindings,
             validator=ProviderApiKeyAuthCredentialValidator(),
             encryptor=TenantApiKeyAuthCredentialEncryptor(),
+        ),
+        web_app_runtime=WebAppRuntimeQueryService(
+            runtime=app_definition_repository,
+            file_service=FileService(database_client),
         ),
         explore_banner_queries=ExploreBannerQueryService(
             banners=ExploreBannerQueryRepository(client=database_client),
